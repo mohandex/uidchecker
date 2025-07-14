@@ -49,11 +49,26 @@ class TradeBNBot:
             )
         ''')
         
+        # جدول ادمین‌ها
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS admins (
+                admin_id INTEGER PRIMARY KEY,
+                username TEXT,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
         # درج لینک پیش‌فرض گروه VIP
         cursor.execute('''
             INSERT OR IGNORE INTO settings (key, value) 
             VALUES ('vip_group_link', ?)
         ''', (VIP_GROUP_LINK,))
+        
+        # درج ادمین اصلی
+        cursor.execute('''
+            INSERT OR IGNORE INTO admins (admin_id, username) 
+            VALUES (?, 'main_admin')
+        ''', (ADMIN_ID,))
         
         conn.commit()
         conn.close()
@@ -110,6 +125,105 @@ class TradeBNBot:
         cursor.execute('UPDATE users SET status = "rejected" WHERE user_id = ?', (user_id,))
         conn.commit()
         conn.close()
+    
+    def is_admin(self, user_id):
+        """بررسی ادمین بودن کاربر"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT admin_id FROM admins WHERE admin_id = ?', (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None
+    
+    def add_admin(self, admin_id, username):
+        """اضافه کردن ادمین جدید"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR IGNORE INTO admins (admin_id, username)
+            VALUES (?, ?)
+        ''', (admin_id, username))
+        conn.commit()
+        conn.close()
+    
+    def remove_admin(self, admin_id):
+        """حذف ادمین (به جز ادمین اصلی)"""
+        if admin_id == ADMIN_ID:
+            return False  # نمی‌توان ادمین اصلی را حذف کرد
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM admins WHERE admin_id = ?', (admin_id,))
+        conn.commit()
+        conn.close()
+        return True
+    
+    def get_all_admins(self):
+        """دریافت لیست تمام ادمین‌ها"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM admins ORDER BY added_at')
+        result = cursor.fetchall()
+        conn.close()
+        return result
+    
+    def get_user_stats(self):
+        """دریافت آمار کاربران"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        # تعداد کل کاربران
+        cursor.execute('SELECT COUNT(*) FROM users')
+        total_users = cursor.fetchone()[0]
+        
+        # تعداد کاربران تایید شده
+        cursor.execute('SELECT COUNT(*) FROM users WHERE status = "approved"')
+        approved_users = cursor.fetchone()[0]
+        
+        # تعداد کاربران در انتظار
+        cursor.execute('SELECT COUNT(*) FROM users WHERE status = "pending"')
+        pending_users = cursor.fetchone()[0]
+        
+        # تعداد کاربران رد شده
+        cursor.execute('SELECT COUNT(*) FROM users WHERE status = "rejected"')
+        rejected_users = cursor.fetchone()[0]
+        
+        conn.close()
+        return {
+            'total': total_users,
+            'approved': approved_users,
+            'pending': pending_users,
+            'rejected': rejected_users
+        }
+    
+    def get_all_users(self, status=None):
+        """دریافت لیست کاربران"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        
+        if status:
+            cursor.execute('SELECT * FROM users WHERE status = ? ORDER BY created_at DESC', (status,))
+        else:
+            cursor.execute('SELECT * FROM users ORDER BY created_at DESC')
+        
+        result = cursor.fetchall()
+        conn.close()
+        return result
+    
+    def delete_user(self, user_id):
+        """حذف کاربر از دیتابیس"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+    
+    def revoke_user_access(self, user_id):
+        """لغو دسترسی کاربر (تغییر وضعیت به rejected)"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET status = "rejected" WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
 
 # ایجاد نمونه از کلاس بات
 bot_instance = TradeBNBot()
@@ -132,7 +246,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📞 پشتیبانی", url='https://t.me/CHECKUIDOURBIT')]
     ]
     
-    if update.effective_user.id == ADMIN_ID:
+    if bot_instance.is_admin(update.effective_user.id):
         keyboard.append([InlineKeyboardButton("⚙️ مدیریت بات", callback_data='admin_panel')])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -143,7 +257,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["📞 پشتیبانی", "ℹ️ راهنما"]
     ]
     
-    if update.effective_user.id == ADMIN_ID:
+    if bot_instance.is_admin(update.effective_user.id):
         reply_keyboard.append(["⚙️ پنل مدیریت"])
     
     keyboard_markup = ReplyKeyboardMarkup(
@@ -222,19 +336,41 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(help_text)
         return
     
-    elif message_text == "⚙️ پنل مدیریت" and user.id == ADMIN_ID:
+    elif message_text == "⚙️ پنل مدیریت" and bot_instance.is_admin(user.id):
         await admin_panel(update, context)
         return
     
     # Check if user is admin and message starts with /admin
-    if user.id == ADMIN_ID and message_text.startswith('/admin'):
+    if bot_instance.is_admin(user.id) and message_text.startswith('/admin'):
         await admin_panel(update, context)
         return
     
-    # Handle admin link change
-    if user.id == ADMIN_ID and context.user_data.get('waiting_for_link'):
-        await handle_admin_link_change(update, context)
-        return
+    # Handle admin operations
+    if bot_instance.is_admin(user.id):
+        # Handle admin link change
+        if context.user_data.get('waiting_for_link'):
+            await handle_admin_link_change(update, context)
+            return
+        
+        # Handle adding new admin
+        elif context.user_data.get('waiting_for_admin_id'):
+            await handle_add_admin(update, context)
+            return
+        
+        # Handle removing admin
+        elif context.user_data.get('waiting_for_remove_admin_id'):
+            await handle_remove_admin(update, context)
+            return
+        
+        # Handle deleting user
+        elif context.user_data.get('waiting_for_delete_user_id'):
+            await handle_delete_user(update, context)
+            return
+        
+        # Handle revoking user access
+        elif context.user_data.get('waiting_for_revoke_user_id'):
+            await handle_revoke_access(update, context)
+            return
     
     # Check if message is a valid UID (only numbers)
     if message_text.isdigit():
@@ -278,13 +414,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Admin panel
 async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    if not bot_instance.is_admin(update.effective_user.id):
         await update.message.reply_text("❌ شما دسترسی ادمین ندارید!")
         return
     
     admin_keyboard = create_glass_keyboard([
-        [("تغییر لینک گروه VIP 🔗", "change_vip_link")],
-        [("مشاهده تنظیمات ⚙️", "view_settings")]
+        [("آمار کاربران 📊", "user_stats"), ("مدیریت کاربران 👥", "manage_users")],
+        [("مدیریت ادمین‌ها 👑", "manage_admins"), ("تنظیمات ⚙️", "bot_settings")],
+        [("تغییر لینک VIP 🔗", "change_vip_link")]
     ])
     
     admin_text = (
@@ -325,8 +462,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data == 'admin_panel':
         admin_keyboard = create_glass_keyboard([
-            [("تغییر لینک گروه VIP 🔗", "change_vip_link")],
-            [("مشاهده تنظیمات ⚙️", "view_settings")]
+            [("آمار کاربران 📊", "user_stats"), ("مدیریت کاربران 👥", "manage_users")],
+            [("مدیریت ادمین‌ها 👑", "manage_admins"), ("تنظیمات ⚙️", "bot_settings")],
+            [("تغییر لینک VIP 🔗", "change_vip_link")]
         ])
         
         admin_text = (
@@ -336,13 +474,121 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(admin_text, reply_markup=admin_keyboard)
     
-    elif data == 'view_settings':
+    elif data == 'user_stats':
+        stats = bot_instance.get_user_stats()
+        stats_text = (
+            "📊 آمار کاربران:\n\n"
+            f"👥 کل کاربران: {stats['total']}\n"
+            f"✅ تایید شده: {stats['approved']}\n"
+            f"⏳ در انتظار: {stats['pending']}\n"
+            f"❌ رد شده: {stats['rejected']}\n\n"
+            "🔙 برای بازگشت از /admin استفاده کنید"
+        )
+        await query.edit_message_text(stats_text)
+    
+    elif data == 'manage_users':
+        user_management_keyboard = create_glass_keyboard([
+            [("کاربران تایید شده ✅", "list_approved"), ("کاربران در انتظار ⏳", "list_pending")],
+            [("کاربران رد شده ❌", "list_rejected"), ("حذف کاربر 🗑️", "delete_user_prompt")],
+            [("لغو دسترسی کاربر 🚫", "revoke_access_prompt"), ("🔙 بازگشت", "admin_panel")]
+        ])
+        
+        await query.edit_message_text(
+            "👥 مدیریت کاربران:\n\nگزینه مورد نظر را انتخاب کنید:",
+            reply_markup=user_management_keyboard
+        )
+    
+    elif data == 'manage_admins':
+        if query.from_user.id != ADMIN_ID:
+            await query.answer("❌ فقط ادمین اصلی می‌تواند ادمین‌ها را مدیریت کند!", show_alert=True)
+            return
+        
+        admin_management_keyboard = create_glass_keyboard([
+            [("لیست ادمین‌ها 👑", "list_admins"), ("اضافه کردن ادمین ➕", "add_admin_prompt")],
+            [("حذف ادمین ➖", "remove_admin_prompt"), ("🔙 بازگشت", "admin_panel")]
+        ])
+        
+        await query.edit_message_text(
+            "👑 مدیریت ادمین‌ها:\n\nگزینه مورد نظر را انتخاب کنید:",
+            reply_markup=admin_management_keyboard
+        )
+    
+    elif data == 'bot_settings':
         vip_link = bot_instance.get_vip_link()
         settings_text = (
-            "⚙️ تنظیمات فعلی:\n\n"
-            f"🔗 لینک گروه VIP: {vip_link}"
+            "⚙️ تنظیمات بات:\n\n"
+            f"🔗 لینک گروه VIP: {vip_link}\n\n"
+            "🔙 برای بازگشت از /admin استفاده کنید"
         )
         await query.edit_message_text(settings_text)
+    
+    elif data.startswith('list_'):
+        status_map = {
+            'list_approved': 'approved',
+            'list_pending': 'pending', 
+            'list_rejected': 'rejected'
+        }
+        status = status_map.get(data)
+        users = bot_instance.get_all_users(status)
+        
+        if not users:
+            await query.edit_message_text(f"📝 هیچ کاربری با وضعیت '{status}' یافت نشد.")
+            return
+        
+        user_list = f"📋 کاربران {status}:\n\n"
+        for i, user in enumerate(users[:10], 1):  # نمایش 10 کاربر اول
+            username = f"@{user[1]}" if user[1] else "بدون نام کاربری"
+            user_list += f"{i}. {username} (ID: {user[0]})\nUID: {user[2]}\n\n"
+        
+        if len(users) > 10:
+            user_list += f"... و {len(users) - 10} کاربر دیگر\n\n"
+        
+        user_list += "🔙 برای بازگشت از /admin استفاده کنید"
+        await query.edit_message_text(user_list)
+    
+    elif data == 'list_admins':
+        admins = bot_instance.get_all_admins()
+        admin_list = "👑 لیست ادمین‌ها:\n\n"
+        
+        for i, admin in enumerate(admins, 1):
+            username = admin[1] if admin[1] else "نامشخص"
+            status = "(ادمین اصلی)" if admin[0] == ADMIN_ID else ""
+            admin_list += f"{i}. {username} {status}\nID: {admin[0]}\n\n"
+        
+        admin_list += "🔙 برای بازگشت از /admin استفاده کنید"
+        await query.edit_message_text(admin_list)
+    
+    elif data == 'add_admin_prompt':
+        await query.edit_message_text(
+            "➕ اضافه کردن ادمین جدید:\n\n"
+            "لطفاً ID کاربری که می‌خواهید ادمین کنید را ارسال کنید:\n\n"
+            "مثال: 123456789"
+        )
+        context.user_data['waiting_for_admin_id'] = True
+    
+    elif data == 'remove_admin_prompt':
+        await query.edit_message_text(
+            "➖ حذف ادمین:\n\n"
+            "لطفاً ID ادمینی که می‌خواهید حذف کنید را ارسال کنید:\n\n"
+            "⚠️ توجه: نمی‌توانید ادمین اصلی را حذف کنید"
+        )
+        context.user_data['waiting_for_remove_admin_id'] = True
+    
+    elif data == 'delete_user_prompt':
+        await query.edit_message_text(
+            "🗑️ حذف کاربر:\n\n"
+            "لطفاً ID کاربری که می‌خواهید حذف کنید را ارسال کنید:\n\n"
+            "⚠️ توجه: این عمل غیرقابل بازگشت است!"
+        )
+        context.user_data['waiting_for_delete_user_id'] = True
+    
+    elif data == 'revoke_access_prompt':
+        await query.edit_message_text(
+            "🚫 لغو دسترسی کاربر:\n\n"
+            "لطفاً ID کاربری که می‌خواهید دسترسی‌اش را لغو کنید را ارسال کنید:\n\n"
+            "این کار وضعیت کاربر را به 'رد شده' تغییر می‌دهد"
+        )
+        context.user_data['waiting_for_revoke_user_id'] = True
 
 # Approve user
 async def approve_user(query, context, user_id):
@@ -406,6 +652,113 @@ async def handle_admin_link_change(update: Update, context: ContextTypes.DEFAULT
         )
     context.user_data['waiting_for_link'] = False
 
+# Handle adding new admin
+async def handle_add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ فقط ادمین اصلی می‌تواند ادمین جدید اضافه کند!")
+        context.user_data['waiting_for_admin_id'] = False
+        return
+    
+    admin_id_text = update.message.text
+    if admin_id_text.isdigit():
+        admin_id = int(admin_id_text)
+        if bot_instance.is_admin(admin_id):
+            await update.message.reply_text("⚠️ این کاربر قبلاً ادمین است!")
+        else:
+            bot_instance.add_admin(admin_id, "new_admin")
+            await update.message.reply_text(
+                f"✅ کاربر {admin_id} با موفقیت به عنوان ادمین اضافه شد!"
+            )
+    else:
+        await update.message.reply_text(
+            "❌ ID نامعتبر! لطفاً فقط اعداد وارد کنید\n"
+            "مثال: 123456789"
+        )
+    context.user_data['waiting_for_admin_id'] = False
+
+# Handle removing admin
+async def handle_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ فقط ادمین اصلی می‌تواند ادمین‌ها را حذف کند!")
+        context.user_data['waiting_for_remove_admin_id'] = False
+        return
+    
+    admin_id_text = update.message.text
+    if admin_id_text.isdigit():
+        admin_id = int(admin_id_text)
+        if admin_id == ADMIN_ID:
+            await update.message.reply_text("❌ نمی‌توانید ادمین اصلی را حذف کنید!")
+        elif not bot_instance.is_admin(admin_id):
+            await update.message.reply_text("⚠️ این کاربر ادمین نیست!")
+        else:
+            success = bot_instance.remove_admin(admin_id)
+            if success:
+                await update.message.reply_text(
+                    f"✅ ادمین {admin_id} با موفقیت حذف شد!"
+                )
+            else:
+                await update.message.reply_text("❌ خطا در حذف ادمین!")
+    else:
+        await update.message.reply_text(
+            "❌ ID نامعتبر! لطفاً فقط اعداد وارد کنید\n"
+            "مثال: 123456789"
+        )
+    context.user_data['waiting_for_remove_admin_id'] = False
+
+# Handle deleting user
+async def handle_delete_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id_text = update.message.text
+    if user_id_text.isdigit():
+        user_id = int(user_id_text)
+        user_data = bot_instance.get_user_by_id(user_id)
+        if user_data:
+            bot_instance.delete_user(user_id)
+            await update.message.reply_text(
+                f"✅ کاربر {user_id} با موفقیت حذف شد!\n"
+                f"UID حذف شده: {user_data[2]}"
+            )
+        else:
+            await update.message.reply_text("❌ کاربر یافت نشد!")
+    else:
+        await update.message.reply_text(
+            "❌ ID نامعتبر! لطفاً فقط اعداد وارد کنید\n"
+            "مثال: 123456789"
+        )
+    context.user_data['waiting_for_delete_user_id'] = False
+
+# Handle revoking user access
+async def handle_revoke_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id_text = update.message.text
+    if user_id_text.isdigit():
+        user_id = int(user_id_text)
+        user_data = bot_instance.get_user_by_id(user_id)
+        if user_data:
+            bot_instance.revoke_user_access(user_id)
+            await update.message.reply_text(
+                f"✅ دسترسی کاربر {user_id} لغو شد!\n"
+                f"UID: {user_data[2]}\n"
+                f"وضعیت جدید: رد شده"
+            )
+            
+            # اطلاع‌رسانی به کاربر
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="🚫 دسترسی شما به گروه VIP لغو شد!\n\n"
+                         "دلیل: عدم رعایت قوانین\n"
+                         "برای اطلاعات بیشتر با پشتیبانی تماس بگیرید."
+                )
+            except:
+                pass  # اگر نتوان پیام ارسال کرد
+        else:
+            await update.message.reply_text("❌ کاربر یافت نشد!")
+    else:
+        await update.message.reply_text(
+            "❌ ID نامعتبر! لطفاً فقط اعداد وارد کنید\n"
+            "مثال: 123456789"
+        )
+    context.user_data['waiting_for_revoke_user_id'] = False
+
 def main():
     # Initialize database
     bot_instance.init_database()
@@ -415,6 +768,7 @@ def main():
     
     # Add handlers
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("admin", admin_panel))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(CallbackQueryHandler(button_callback))
     
