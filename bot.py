@@ -356,7 +356,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "- یکی 50 دلار شارژ میکنه\n"
             "- یکی 1000 شارژ میکنه و حداقلش 50 دلار هست\n\n"
             "❗️اگر قبلا در این صرافی اکانت دارید و کد رفرال ما را وارد نکردید بایستی اکانت جدید با لینک زیر بسازید:\n\n"
-            "`https://www.ourbit.com/register?inviteCode=TradeBN`\n\n"
+            "https://www.ourbit.com/register?inviteCode=TradeBN\n\n"
             "❓ آیا در صرافی اوربیت اکانت دارید؟",
             reply_markup=account_keyboard,
             parse_mode='Markdown'
@@ -550,7 +550,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "- یکی 50 دلار شارژ میکنه\n"
             "- یکی 1000 شارژ میکنه و حداقلش 50 دلار هست\n\n"
             "❗️اگر قبلا در این صرافی اکانت دارید و کد رفرال ما را وارد نکردید بایستی اکانت جدید با لینک زیر بسازید:\n\n"
-            "`https://www.ourbit.com/register?inviteCode=TradeBN`\n\n"
+            "https://www.ourbit.com/register?inviteCode=TradeBN\n\n"
             "❓ آیا در صرافی اوربیت اکانت دارید؟",
             reply_markup=account_keyboard,
             parse_mode='Markdown'
@@ -574,7 +574,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.edit_message_text(
             "💎 با استفاده از لینک زیر یک اکانت در صرافی اوربیت بسازید و پس از آن روی دکمه «ادامه عضویت» بزنید.\n\n"
-            "`https://www.ourbit.com/register?inviteCode=TradeBN`",
+            "https://www.ourbit.com/register?inviteCode=TradeBN",
             reply_markup=continue_keyboard,
             parse_mode='Markdown'
         )
