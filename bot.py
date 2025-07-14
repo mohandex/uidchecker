@@ -129,7 +129,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # دکمه‌های inline
     keyboard = [
         [InlineKeyboardButton("🔹 ثبت UID", callback_data='register_uid')],
-        [InlineKeyboardButton("📞 پشتیبانی", url='https://t.me/support')]
+        [InlineKeyboardButton("📞 پشتیبانی", url='https://t.me/CHECKUIDOURBIT')]
     ]
     
     if update.effective_user.id == ADMIN_ID:
@@ -200,7 +200,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif message_text == "📞 پشتیبانی":
         support_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📞 تماس با پشتیبانی", url='https://t.me/support')]
+            [InlineKeyboardButton("📞 تماس با پشتیبانی", url='https://t.me/CHECKUIDOURBIT')]
         ])
         await update.message.reply_text(
             "📞 برای تماس با پشتیبانی از دکمه زیر استفاده کنید:",
