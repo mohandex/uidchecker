@@ -238,8 +238,40 @@ def create_glass_keyboard(buttons):
         keyboard.append(keyboard_row)
     return InlineKeyboardMarkup(keyboard)
 
+async def check_channel_membership(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """بررسی عضویت کاربر در کانال"""
+    try:
+        member = await context.bot.get_chat_member(chat_id="@trade_bn", user_id=user_id)
+        return member.status in ['member', 'administrator', 'creator']
+    except Exception:
+        return False
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پیام خوش‌آمدگویی"""
+    """پیام خوش‌آمدگویی با بررسی عضویت اجباری"""
+    user = update.effective_user
+    
+    # بررسی عضویت در کانال (به جز ادمین‌ها)
+    if not bot_instance.is_admin(user.id):
+        is_member = await check_channel_membership(user.id, context)
+        if not is_member:
+            # دکمه بررسی مجدد
+            check_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 بررسی مجدد", callback_data='check_membership')],
+                [InlineKeyboardButton("📢 عضویت در کانال", url='https://t.me/trade_bn')]
+            ])
+            
+            membership_text = (
+                "⚠️ برای استفاده از ربات باید عضو کانال باشید!\n\n"
+                "📢 لطفاً ابتدا در کانال @trade_bn عضو شوید\n\n"
+                "✅ پس از عضویت، دکمه 'بررسی مجدد' را بزنید"
+            )
+            
+            await update.message.reply_text(
+                membership_text,
+                reply_markup=check_keyboard
+            )
+            return
+    
     # دکمه‌های inline
     keyboard = [
         [InlineKeyboardButton("🔹 ثبت UID", callback_data='register_uid')],
@@ -288,6 +320,27 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message_text = update.message.text
+    
+    # بررسی عضویت در کانال (به جز ادمین‌ها)
+    if not bot_instance.is_admin(user.id):
+        is_member = await check_channel_membership(user.id, context)
+        if not is_member:
+            check_keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 بررسی مجدد", callback_data='check_membership')],
+                [InlineKeyboardButton("📢 عضویت در کانال", url='https://t.me/trade_bn')]
+            ])
+            
+            membership_text = (
+                "⚠️ برای استفاده از ربات باید عضو کانال باشید!\n\n"
+                "📢 لطفاً ابتدا در کانال @trade_bn عضو شوید\n\n"
+                "✅ پس از عضویت، دکمه 'بررسی مجدد' را بزنید"
+            )
+            
+            await update.message.reply_text(
+                membership_text,
+                reply_markup=check_keyboard
+            )
+            return
     
     # Handle reply keyboard buttons
     if message_text == "🆔 ثبت UID":
@@ -438,12 +491,91 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     
-    if data == 'register_uid':
+    if data == 'check_membership':
+        user = query.from_user
+        is_member = await check_channel_membership(user.id, context)
+        
+        if is_member:
+            # کاربر عضو شده، نمایش منوی اصلی
+            keyboard = [
+                [InlineKeyboardButton("🔹 ثبت UID", callback_data='register_uid')],
+                [InlineKeyboardButton("📞 پشتیبانی", url='https://t.me/CHECKUIDOURBIT')]
+            ]
+            
+            if bot_instance.is_admin(user.id):
+                keyboard.append([InlineKeyboardButton("⚙️ مدیریت بات", callback_data='admin_panel')])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            welcome_text = (
+                "✅ عضویت شما تایید شد!\n\n"
+                "🌟 به بات کانال TradeBN خوش آمدید! 🌟\n\n"
+                "💎 جهت ثبت UID لطفاً UID مورد نظر خود را ارسال کنید\n\n"
+                "🔸 از دکمه‌های زیر استفاده کنید:"
+            )
+            
+            await query.edit_message_text(
+                welcome_text,
+                reply_markup=reply_markup
+            )
+        else:
+            # کاربر هنوز عضو نشده
+            await query.answer(
+                "❌ شما هنوز عضو کانال نشده‌اید! لطفاً ابتدا عضو شوید.",
+                show_alert=True
+            )
+    
+    elif data == 'register_uid':
+        account_keyboard = create_glass_keyboard([
+            [("بله ✅", "has_account"), ("خیر ❌", "no_account")]
+        ])
+        
         await query.edit_message_text(
-            "🆔 لطفاً UID خود را ارسال کنید:\n\n"
-            "⚠️ فقط اعداد مجاز هستند\n"
-            "مثال: 123456789"
+            "برای ورود به VIP کانال Trade BN :\n\n"
+            "- باید شرایط زیر را انجام بدهید\n\n"
+            "➊ - یک حساب در صرافی اوربیت با کد رفرال TRADEBN بسازید\n\n"
+            "➋ - و حسابتون رو هر چقدر دوست داشتین شارژ کنید!\n\n"
+            "- یکی 50 دلار شارژ میکنه\n"
+            "- یکی 1000 شارژ میکنه و حداقلش 50 دلار هست\n\n"
+            "❗️اگر قبلا در این صرافی اکانت دارید و کد رفرال ما را وارد نکردید بایستی اکانت جدید با لینک زیر بسازید:\n\n"
+            "`https://www.ourbit.com/register?inviteCode=TradeBN`\n\n"
+            "❓ آیا در صرافی اوربیت اکانت دارید؟",
+            reply_markup=account_keyboard,
+            parse_mode='Markdown'
         )
+    
+    elif data == 'has_account':
+        # Send UID image with caption for users who already have an account
+        with open('uid.jpg', 'rb') as photo:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo,
+                caption="✅با کمک عکس بالا، شناسه کاربری (UID) خود را بردارید و ارسال کنید :"
+            )
+        await query.message.delete()
+    
+    elif data == 'no_account':
+        # Send message with link to create account and continue membership button
+        continue_keyboard = create_glass_keyboard([
+            [("ادامه عضویت", "continue_membership")]
+        ])
+        
+        await query.edit_message_text(
+            "💎 با استفاده از لینک زیر یک اکانت در صرافی اوربیت بسازید و پس از آن روی دکمه «ادامه عضویت» بزنید.\n\n"
+            "`https://www.ourbit.com/register?inviteCode=TradeBN`",
+            reply_markup=continue_keyboard,
+            parse_mode='Markdown'
+        )
+    
+    elif data == 'continue_membership':
+        # Send UID image with caption for continuing membership
+        with open('uid.jpg', 'rb') as photo:
+            await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                photo=photo,
+                caption="✅با کمک عکس بالا، شناسه کاربری (UID) خود را بردارید و ارسال کنید :"
+            )
+        await query.message.delete()
     
     elif data.startswith('approve_'):
         user_id = int(data.split('_')[1])
