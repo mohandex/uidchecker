@@ -274,7 +274,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # دکمه‌های inline
     keyboard = [
-        [InlineKeyboardButton("🔹 ثبت UID", callback_data='register_uid')],
+        [InlineKeyboardButton("💎 عضویت در VIP", callback_data='register_uid')],
         [InlineKeyboardButton("📞 پشتیبانی", url='https://t.me/CHECKUIDOURBIT')]
     ]
     
@@ -285,7 +285,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # دکمه‌های پایین (Reply Keyboard)
     reply_keyboard = [
-        ["🆔 ثبت UID", "📊 وضعیت من"],
+        ["💎 عضویت در VIP", "📊 وضعیت من"],
         ["📞 پشتیبانی", "ℹ️ راهنما"]
     ]
     
@@ -343,7 +343,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
     
     # Handle reply keyboard buttons
-    if message_text == "🆔 ثبت UID":
+    if message_text == "💎 عضویت در VIP":
         account_keyboard = create_glass_keyboard([
             [("بله ✅", "has_account"), ("خیر ❌", "no_account")]
         ])
@@ -389,16 +389,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif message_text == "ℹ️ راهنما":
         help_text = (
-            "ℹ️ راهنمای استفاده از بات:\n\n"
-            "1️⃣ ابتدا UID خود را ثبت کنید\n"
-            "2️⃣ منتظر تایید ادمین باشید\n"
-            "3️⃣ پس از تایید، لینک گروه VIP دریافت کنید\n\n"
-            "💡 نکات مهم:\n"
-            "• UID باید فقط شامل اعداد باشد\n"
-            "• هر کاربر فقط یک بار می‌تواند UID ثبت کند\n"
-            "• در صورت رد شدن، می‌توانید مجدداً تلاش کنید"
+            "📋 شرایط شرکت در VIP:\n\n"
+            "🔹 با لینک رفرال ما در صرافی ثبت نام بکنید و حسابتون رو هر چقدر دوست داشتین شارژ کنید!\n\n"
+            "💰 مثال‌های شارژ:\n"
+            "- یکی 50 دلار شارژ میکنه\n"
+            "- یکی 1000 شارژ میکنه و حداقلش 50 دلار هست\n\n"
+            "🔗 لینک ثبت‌نام⁉️👇🏻\n\n"
+            "https://www.ourbit.com/register?inviteCode=TradeBN\n\n"
+            "همین🫡 مخلص"
         )
-        await update.message.reply_text(help_text)
+        await update.message.reply_text(help_text, parse_mode='Markdown')
         return
     
     elif message_text == "⚙️ پنل مدیریت" and bot_instance.is_admin(user.id):
@@ -510,7 +510,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_member:
             # کاربر عضو شده، نمایش منوی اصلی
             keyboard = [
-                [InlineKeyboardButton("🔹 ثبت UID", callback_data='register_uid')],
+                [InlineKeyboardButton("💎 عضویت در VIP", callback_data='register_uid')],
                 [InlineKeyboardButton("📞 پشتیبانی", url='https://t.me/CHECKUIDOURBIT')]
             ]
             
