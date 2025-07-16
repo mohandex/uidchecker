@@ -359,7 +359,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "https://www.ourbit.com/register?inviteCode=TradeBN\n\n"
             "❓ آیا در صرافی اوربیت اکانت دارید؟",
             reply_markup=account_keyboard,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            disable_web_page_preview=True
         )
         return
     
@@ -398,7 +399,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "https://www.ourbit.com/register?inviteCode=TradeBN\n\n"
             "همین🫡 مخلص"
         )
-        await update.message.reply_text(help_text, parse_mode='Markdown')
+        await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
         return
     
     elif message_text == "⚙️ پنل مدیریت" and bot_instance.is_admin(user.id):
@@ -553,7 +554,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "https://www.ourbit.com/register?inviteCode=TradeBN\n\n"
             "❓ آیا در صرافی اوربیت اکانت دارید؟",
             reply_markup=account_keyboard,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            disable_web_page_preview=True
         )
     
     elif data == 'has_account':
@@ -576,7 +578,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💎 با استفاده از لینک زیر یک اکانت در صرافی اوربیت بسازید و پس از آن روی دکمه «ادامه عضویت» بزنید.\n\n"
             "https://www.ourbit.com/register?inviteCode=TradeBN",
             reply_markup=continue_keyboard,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            disable_web_page_preview=True
         )
     
     elif data == 'continue_membership':
@@ -768,7 +771,7 @@ async def reject_user(query, context, user_id):
     # Send rejection message to user
     rejection_text = (
         "❌ متأسفانه UID شما تایید نشد\n\n"
-        "🔄 می‌توانید مجدداً UID صحیح خود را ارسال کنید"
+"🚫 حساب اوربیت شما حداقل موجودی لازم (۵۰ دلار) را ندارد. برای ادامه، لطفاً ابتدا والت خود را شارژ کرده و سپس UID را ارسال نمایید. ممنون از همکاری شما 🌐"
     )
     
     await context.bot.send_message(
