@@ -351,7 +351,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "برای ورود به VIP کانال Trade BN :\n\n"
             "- باید شرایط زیر را انجام بدهید\n\n"
-            "➊ - یک حساب در صرافی اوربیت با کد رفرال TRADEBN بسازید\n\n"
+            "➊ - یک حساب در صرافی اوربیت با کد رفرال TradeBN بسازید\n\n"
             "➋ - و حسابتون رو هر چقدر دوست داشتین شارژ کنید!\n\n"
             "- یکی 50 دلار شارژ میکنه\n"
             "- یکی 1000 شارژ میکنه و حداقلش 50 دلار هست\n\n"
