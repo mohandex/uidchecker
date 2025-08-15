@@ -37,6 +37,7 @@ class TradeBNBot:
                 username TEXT,
                 uid TEXT,
                 status TEXT DEFAULT 'pending',
+                is_blocked INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -224,6 +225,31 @@ class TradeBNBot:
         cursor.execute('UPDATE users SET status = "rejected" WHERE user_id = ?', (user_id,))
         conn.commit()
         conn.close()
+    
+    def block_user(self, user_id):
+        """مسدود کردن کاربر"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET is_blocked = 1 WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+    
+    def unblock_user(self, user_id):
+        """رفع مسدودیت کاربر"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('UPDATE users SET is_blocked = 0 WHERE user_id = ?', (user_id,))
+        conn.commit()
+        conn.close()
+    
+    def is_user_blocked(self, user_id):
+        """بررسی مسدود بودن کاربر"""
+        conn = sqlite3.connect('bot_database.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT is_blocked FROM users WHERE user_id = ?', (user_id,))
+        result = cursor.fetchone()
+        conn.close()
+        return result and result[0] == 1
 
 # ایجاد نمونه از کلاس بات
 bot_instance = TradeBNBot()
@@ -249,6 +275,17 @@ async def check_channel_membership(user_id: int, context: ContextTypes.DEFAULT_T
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پیام خوش‌آمدگویی با بررسی عضویت اجباری"""
     user = update.effective_user
+    
+    # بررسی مسدود بودن کاربر
+    user_data = bot_instance.get_user_by_id(user.id)
+    if user_data and bot_instance.is_user_blocked(user.id) and not bot_instance.is_admin(user.id):
+        blocked_text = (
+            "🔒 شما از استفاده از ربات مسدود شده‌اید!\n\n"
+            "دلیل: نقض قوانین\n"
+            "برای اطلاعات بیشتر با پشتیبانی تماس بگیرید."
+        )
+        await update.message.reply_text(blocked_text)
+        return
     
     # بررسی عضویت در کانال (به جز ادمین‌ها)
     if not bot_instance.is_admin(user.id):
@@ -320,6 +357,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message_text = update.message.text
+    
+    # بررسی مسدود بودن کاربر
+    user_data = bot_instance.get_user_by_id(user.id)
+    if user_data and bot_instance.is_user_blocked(user.id) and not bot_instance.is_admin(user.id):
+        blocked_text = (
+            "🔒 شما از استفاده از ربات مسدود شده‌اید!\n\n"
+            "دلیل: نقض قوانین\n"
+            "برای اطلاعات بیشتر با پشتیبانی تماس بگیرید."
+        )
+        await update.message.reply_text(blocked_text)
+        return
     
     # بررسی عضویت در کانال (به جز ادمین‌ها)
     if not bot_instance.is_admin(user.id):
@@ -436,6 +484,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Handle revoking user access
         elif context.user_data.get('waiting_for_revoke_user_id'):
             await handle_revoke_access(update, context)
+            return
+        
+        # Handle blocking user
+        elif context.user_data.get('waiting_for_block_user_id'):
+            await handle_block_user(update, context)
+            return
+        
+        # Handle unblocking user
+        elif context.user_data.get('waiting_for_unblock_user_id'):
+            await handle_unblock_user(update, context)
             return
     
     # Check if message is a valid UID (only numbers)
@@ -637,7 +695,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_management_keyboard = create_glass_keyboard([
             [("کاربران تایید شده ✅", "list_approved"), ("کاربران در انتظار ⏳", "list_pending")],
             [("کاربران رد شده ❌", "list_rejected"), ("حذف کاربر 🗑️", "delete_user_prompt")],
-            [("لغو دسترسی کاربر 🚫", "revoke_access_prompt"), ("🔙 بازگشت", "admin_panel")]
+            [("لغو دسترسی کاربر 🚫", "revoke_access_prompt"), ("مسدود کردن کاربر 🔒", "block_user_prompt")],
+            [("رفع مسدودیت کاربر 🔓", "unblock_user_prompt"), ("🔙 بازگشت", "admin_panel")]
         ])
         
         await query.edit_message_text(
@@ -669,29 +728,58 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(settings_text)
     
-    elif data.startswith('list_'):
-        status_map = {
-            'list_approved': 'approved',
-            'list_pending': 'pending', 
-            'list_rejected': 'rejected'
-        }
-        status = status_map.get(data)
+    elif data.startswith('list_') or data.startswith('page_'):
+        # Handle pagination
+        if data.startswith('page_'):
+            parts = data.split('_')
+            status = parts[1]
+            page = int(parts[2])
+        else:
+            status_map = {
+                'list_approved': 'approved',
+                'list_pending': 'pending', 
+                'list_rejected': 'rejected'
+            }
+            status = status_map.get(data)
+            page = 1
+        
         users = bot_instance.get_all_users(status)
         
         if not users:
             await query.edit_message_text(f"📝 هیچ کاربری با وضعیت '{status}' یافت نشد.")
             return
         
-        user_list = f"📋 کاربران {status}:\n\n"
-        for i, user in enumerate(users[:10], 1):  # نمایش 10 کاربر اول
+        # Pagination settings
+        per_page = 10
+        total_pages = (len(users) + per_page - 1) // per_page
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+        current_users = users[start_idx:end_idx]
+        
+        user_list = f"📋 کاربران {status} (صفحه {page}/{total_pages}):\n\n"
+        for i, user in enumerate(current_users, start_idx + 1):
             username = f"@{user[1]}" if user[1] else "بدون نام کاربری"
             user_list += f"{i}. {username} (ID: {user[0]})\nUID: {user[2]}\n\n"
         
-        if len(users) > 10:
-            user_list += f"... و {len(users) - 10} کاربر دیگر\n\n"
+        # Create pagination buttons
+        pagination_buttons = []
+        if page > 1:
+            pagination_buttons.append(("◀️ قبلی", f"page_{status}_{page-1}"))
+        if page < total_pages:
+            pagination_buttons.append(("بعدی ▶️", f"page_{status}_{page+1}"))
         
-        user_list += "🔙 برای بازگشت از /admin استفاده کنید"
-        await query.edit_message_text(user_list)
+        # Add back button
+        back_buttons = [("🔙 بازگشت", "manage_users")]
+        
+        # Create keyboard
+        keyboard_rows = []
+        if pagination_buttons:
+            keyboard_rows.append(pagination_buttons)
+        keyboard_rows.append(back_buttons)
+        
+        pagination_keyboard = create_glass_keyboard(keyboard_rows)
+        
+        await query.edit_message_text(user_list, reply_markup=pagination_keyboard)
     
     elif data == 'list_admins':
         admins = bot_instance.get_all_admins()
@@ -736,6 +824,21 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "این کار وضعیت کاربر را به 'رد شده' تغییر می‌دهد"
         )
         context.user_data['waiting_for_revoke_user_id'] = True
+    
+    elif data == 'block_user_prompt':
+        await query.edit_message_text(
+            "🔒 مسدود کردن کاربر:\n\n"
+            "لطفاً ID کاربری که می‌خواهید مسدود کنید را ارسال کنید:\n\n"
+            "⚠️ کاربر مسدود شده نمی‌تواند از ربات استفاده کند"
+        )
+        context.user_data['waiting_for_block_user_id'] = True
+    
+    elif data == 'unblock_user_prompt':
+        await query.edit_message_text(
+            "🔓 رفع مسدودیت کاربر:\n\n"
+            "لطفاً ID کاربری که می‌خواهید رفع مسدودیت کنید را ارسال کنید:"
+        )
+        context.user_data['waiting_for_unblock_user_id'] = True
 
 # Approve user
 async def approve_user(query, context, user_id):
@@ -905,6 +1008,69 @@ async def handle_revoke_access(update: Update, context: ContextTypes.DEFAULT_TYP
             "مثال: 123456789"
         )
     context.user_data['waiting_for_revoke_user_id'] = False
+
+# Handle blocking user
+async def handle_block_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id_text = update.message.text
+    if user_id_text.isdigit():
+        user_id = int(user_id_text)
+        user_data = bot_instance.get_user_by_id(user_id)
+        if user_data:
+            bot_instance.block_user(user_id)
+            await update.message.reply_text(
+                f"✅ کاربر {user_id} مسدود شد!\n"
+                f"UID: {user_data[2]}"
+            )
+            
+            # اطلاع‌رسانی به کاربر
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="🔒 شما از استفاده از ربات مسدود شده‌اید!\n\n"
+                         "دلیل: نقض قوانین\n"
+                         "برای اطلاعات بیشتر با پشتیبانی تماس بگیرید."
+                )
+            except:
+                pass  # اگر نتوان پیام ارسال کرد
+        else:
+            await update.message.reply_text("❌ کاربر یافت نشد!")
+    else:
+        await update.message.reply_text(
+            "❌ ID نامعتبر! لطفاً فقط اعداد وارد کنید\n"
+            "مثال: 123456789"
+        )
+    context.user_data['waiting_for_block_user_id'] = False
+
+# Handle unblocking user
+async def handle_unblock_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id_text = update.message.text
+    if user_id_text.isdigit():
+        user_id = int(user_id_text)
+        user_data = bot_instance.get_user_by_id(user_id)
+        if user_data:
+            bot_instance.unblock_user(user_id)
+            await update.message.reply_text(
+                f"✅ کاربر {user_id} از مسدودیت خارج شد!\n"
+                f"UID: {user_data[2]}"
+            )
+            
+            # اطلاع‌رسانی به کاربر
+            try:
+                await context.bot.send_message(
+                    chat_id=user_id,
+                    text="🔓 مسدودیت شما از ربات برداشته شد!\n\n"
+                         "اکنون می‌توانید دوباره از ربات استفاده کنید."
+                )
+            except:
+                pass  # اگر نتوان پیام ارسال کرد
+        else:
+            await update.message.reply_text("❌ کاربر یافت نشد!")
+    else:
+        await update.message.reply_text(
+            "❌ ID نامعتبر! لطفاً فقط اعداد وارد کنید\n"
+            "مثال: 123456789"
+        )
+    context.user_data['waiting_for_unblock_user_id'] = False
 
 def main():
     # Initialize database
